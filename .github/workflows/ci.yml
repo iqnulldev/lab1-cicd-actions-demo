@@ -1,35 +1,77 @@
-name: Python CI
+name: CI CD to WSL2 Demo
 
-on:
-  push:
-    branches: [ main ] # Запускати при push у гілку main
-  pull_request:
-    branches: [ main ] # Також запускати при pull request до гілки main
+ on:
+   push:
+     branches: [ main ] # Запускати на push у гілку main
 
-jobs:
-  build:
-    runs-on: ubuntu-latest # Використовувати останню версію Ubuntu
+ jobs:
+   build_and_test: # ЦЕ ТВОЯ ЧАСТИНА З ПЕРШОЇ ЛАБОРАТОРНОЇ (CI)
+     name: Build and Test Project
+     runs-on: ubuntu-latest
+     steps:
+     - name: Checkout repository
+       uses: actions/checkout@v4
 
-    strategy:
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11'] # Матриця для тестування на різних версіях Python
+     # --- ПОЧАТОК ТВОЇХ КРОКІВ З ПЕРШОЇ ЛАБИ (ПРИКЛАД ДЛЯ PYTHON) ---
+     - name: Set up Python
+       uses: actions/setup-python@v5
+       with:
+         python-version: '3.10' # Або твоя версія Python
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4 # Дія для клонування репозиторію
+     - name: Install dependencies
+       run: |
+         python -m pip install --upgrade pip
+         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+         # Можливо, потрібно встановити pytest окремо, якщо його немає в requirements.txt
+         # pip install pytest 
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5 # Дія для налаштування Python
-      with:
-        python-version: ${{ matrix.python-version }}
+     - name: Run tests
+       run: pytest # Або твоя команда для запуску тестів
+     # --- КІНЕЦЬ ТВОЇХ КРОКІВ З ПЕРШОЇ ЛАБИ ---
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install pytest # Встановлюємо pytest, якщо він не в requirements.txt
+   deploy_to_wsl: # ЦЕ НОВИЙ JOB ДЛЯ ДРУГОЇ ЛАБОРАТОРНОЇ (CD)
+     name: Deploy to WSL2 via ngrok
+     needs: build_and_test # ЗАПУСКАТИ ТІЛЬКИ ПІСЛЯ УСПІХУ build_and_test
+     runs-on: ubuntu-latest
+     # Розгортати тільки при push у гілку main, а не на pull request
+     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
-    - name: Run tests
-      run: |
-        ls -R  # Покаже структуру файлів
-        pytest
+     steps:
+     # Крок Checkout не завжди обов'язковий для deploy, якщо deploy.sh все робить сам.
+     # Але якщо deploy.sh очікує якісь файли з репозиторію, то залиш.
+     # - name: Checkout repository 
+     #   uses: actions/checkout@v4
+
+     - name: Setup SSH for WSL2
+       env:
+         SSH_KEY_CONTENT: ${{ secrets.SSH_PRIVATE_KEY }}
+         NGROK_HOST_ADDR: ${{ secrets.NGROK_HOST }}
+         NGROK_TUNNEL_PORT: ${{ secrets.NGROK_PORT }}
+         WSL_TARGET_USER: ${{ secrets.WSL_USERNAME }}
+       run: |
+         echo "Setting up SSH environment on GitHub Runner..."
+         mkdir -p ~/.ssh/
+         echo "${SSH_KEY_CONTENT}" > ~/.ssh/wsl_deploy_key
+         chmod 600 ~/.ssh/wsl_deploy_key
+         
+         echo "Creating SSH config for ngrok tunnel..."
+         cat <<EOF > ~/.ssh/config
+         Host wsl_ngrok_tunnel # Довільне ім'я хоста для SSH-конфігурації
+           HostName ${NGROK_HOST_ADDR}
+           User ${WSL_TARGET_USER}
+           Port ${NGROK_TUNNEL_PORT}
+           IdentityFile ~/.ssh/wsl_deploy_key
+           StrictHostKeyChecking no
+           UserKnownHostsFile=/dev/null
+           LogLevel ERROR # Щоб зменшити кількість логів від SSH
+         EOF
+         chmod 600 ~/.ssh/config
+         
+         echo "SSH Config content on Runner:"
+         cat ~/.ssh/config
+
+     - name: Execute deployment script on WSL2
+       run: |
+         echo "Attempting to connect to WSL2 via ngrok tunnel (wsl_ngrok_tunnel) and run deploy.sh..."
+         ssh wsl_ngrok_tunnel 'bash ~/deploy.sh' # Використовуємо ім'я хоста з SSH config
+         echo "Deployment script execution command sent to WSL2."
