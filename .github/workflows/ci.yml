@@ -18,10 +18,10 @@
 
      - name: Install dependencies
        run: |
-         python -m pip install --upgrade pip
-         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-         # Можливо, потрібно встановити pytest окремо, якщо його немає в requirements.txt
-         # pip install pytest 
+        python -m pip install --upgrade pip
+        pip install pytest 
+        # Якщо у тебе є requirements.txt, і ти хочеш встановити звідти теж:
+        # if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
      - name: Run tests
        run: pytest # Або твоя команда для запуску тестів
@@ -73,3 +73,5 @@
          echo "Attempting to connect to WSL2 via ngrok tunnel (wsl_ngrok_tunnel) and run deploy.sh..."
          ssh wsl_ngrok_tunnel 'bash ~/deploy.sh' # Використовуємо ім'я хоста з SSH config
          echo "Deployment script execution command sent to WSL2."
+
+
