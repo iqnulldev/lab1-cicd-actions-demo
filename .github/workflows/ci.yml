@@ -1,5 +1,4 @@
 name: CI CD to WSL2 Demo
-
  on:
    push:
      branches: [ main ] # Запускати на push у гілку main
